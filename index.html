@@ -36,10 +36,17 @@
         .day-header.current-day .date-number { color: #5a9ced; font-weight: bold; }
         .day-header .date-number { font-size: 12px; font-weight: normal; color: #aaa; }
         .time-label { font-size: 11px; color: #aaa; justify-content: flex-end; padding-right: 8px; }
+        
         .hour-cell {
             background-color: #38761d; cursor: pointer; transition: background-color 0.2s, color 0.2s;
-            font-size: 14px; font-weight: bold; color: rgba(255, 255, 255, 0.8); text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+            font-size: 14px; font-weight: bold;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #000;
+            text-shadow: -1px -1px 0 #fff, 1px -1px 0 #fff, -1px 1px 0 #fff, 1px 1px 0 #fff;
         }
+
         .hour-cell.no-edit { cursor: default; }
         .hour-cell:hover { filter: brightness(1.2); }
         .hour-cell.selected { background-color: #cc0000; }
@@ -145,7 +152,7 @@
             <input type="text" id="nickname-input" placeholder="Введите ваш ник...">
 
             <label for="timezone-select">Ваш часовой пояс:</label>
-            <p class="tz-warning">Если вы используете VPN, ваш часовой пояс может определиться неточно — поменяйте его в списке.</p>
+            <p class="tz-warning">Помните: чужие расписания корректируются с выбранным часовым поясом:</p>
             <select id="timezone-select"></select>
 
             <div class="button-group">
@@ -377,7 +384,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }); 
     }
 
-    // --- ОКОНЧАТЕЛЬНО ИСПРАВЛЕННАЯ ФУНКЦИЯ ---
     function shiftSchedule(scheduleBytes, hourShift) {
         const roundedHourShift = Math.round(hourShift);
         if (roundedHourShift === 0) return scheduleBytes;
@@ -385,29 +391,24 @@ document.addEventListener('DOMContentLoaded', () => {
         const newScheduleBytes = new Uint8Array(Math.ceil(TOTAL_CELLS / 8));
         
         for (let destIndex = 0; destIndex < TOTAL_CELLS; destIndex++) {
-            // 1. Декодируем линейный индекс ячейки в ее реальные координаты
             const destWeek = Math.floor(destIndex / CELLS_PER_WEEK);
             const destIndexInWeek = destIndex % CELLS_PER_WEEK;
             const destHour = Math.floor(destIndexInWeek / DAYS_PER_WEEK);
             const destDayInWeek = destIndexInWeek % DAYS_PER_WEEK;
             
-            // 2. Преобразуем координаты в абсолютное время с начала периода
             const destAbsDay = destWeek * DAYS_PER_WEEK + destDayInWeek;
             const destAbsHour = destAbsDay * HOURS_PER_DAY + destHour;
             
             const sourceAbsHour = (destAbsHour - roundedHourShift + TOTAL_CELLS) % TOTAL_CELLS;
             
-            // 4. Преобразуем абсолютное время источника обратно в координаты
             const sourceAbsDay = Math.floor(sourceAbsHour / HOURS_PER_DAY);
             const sourceHour = sourceAbsHour % HOURS_PER_DAY;
             const sourceWeek = Math.floor(sourceAbsDay / DAYS_PER_WEEK);
             const sourceDayInWeek = sourceAbsDay % DAYS_PER_WEEK;
 
-            // 5. Кодируем координаты источника обратно в линейный индекс
             const sourceIndexInWeek = sourceHour * DAYS_PER_WEEK + sourceDayInWeek;
             const sourceIndex = sourceWeek * CELLS_PER_WEEK + sourceIndexInWeek;
 
-            // 6. Проверяем бит в источнике и устанавливаем его в цели
             const isSourceBitSet = (scheduleBytes[Math.floor(sourceIndex / 8)] >> (sourceIndex % 8)) & 1;
             if (isSourceBitSet) {
                 newScheduleBytes[Math.floor(destIndex / 8)] |= (1 << (destIndex % 8));
