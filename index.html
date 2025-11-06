@@ -234,7 +234,34 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     function resizeGrid() { const p = parseFloat(getComputedStyle(scheduleContainer).paddingTop) * 2; const h = scheduleContainer.clientHeight - p; const w = scheduleContainer.clientWidth - p; const s = Math.floor(Math.min((w - 50) / 7, (h - 40) / 24)) - 2; document.documentElement.style.setProperty('--cell-size', `${s}px`); }
-    function generateGrid() { gridContainer.innerHTML = ''; const today = new Date(); const currentDayIndex = (today.getDay() + 6) % 7; const monday = new Date(today); monday.setDate(today.getDate() - currentDayIndex); const weekDates = Array.from({length: 7}, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d.getDate(); }); gridContainer.appendChild(document.createElement('div')); ['пн','вт','ср','чт','пт','сб','вс'].forEach((day, index) => { const dayCell = document.createElement('div'); dayCell.className = 'grid-cell day-header'; if (index === currentDayIndex) dayCell.classList.add('current-day'); dayCell.innerHTML = `<span>${day}</span><span class="date-number">${weekDates[index]}</span>`; gridContainer.appendChild(dayCell); }); for (let hour = 0; hour < 24; hour++) { const displayHour = (hour + 12) % 24; const timeCell = document.createElement('div'); timeCell.className = 'grid-cell time-label'; timeCell.textContent = `${displayHour.toString().padStart(2, '0')}:00`; gridContainer.appendChild(timeCell); for (let dayIndex = 0; dayIndex < 7; dayIndex++) { const hourCell = document.createElement('div'); hourCell.classList.add('hour-cell'); gridContainer.appendChild(hourCell); } } addGridEventListeners(); }
+    function generateGrid() {
+        gridContainer.innerHTML = '';
+        const today = new Date();
+        const currentDayIndex = (today.getDay() + 6) % 7;
+        const monday = new Date(today);
+        monday.setDate(today.getDate() - currentDayIndex);
+        const weekDates = Array.from({length: 7}, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d.getDate(); });
+        gridContainer.appendChild(document.createElement('div'));
+        ['пн','вт','ср','чт','пт','сб','вс'].forEach((day, index) => {
+            const dayCell = document.createElement('div');
+            dayCell.className = 'grid-cell day-header';
+            if (index === currentDayIndex) dayCell.classList.add('current-day');
+            dayCell.innerHTML = `<span>${day}</span><span class="date-number">${weekDates[index]}</span>`;
+            gridContainer.appendChild(dayCell);
+        });
+        for (let hour = 0; hour < 24; hour++) {
+            const timeCell = document.createElement('div');
+            timeCell.className = 'grid-cell time-label';
+            timeCell.textContent = `${hour.toString().padStart(2, '0')}:00`;
+            gridContainer.appendChild(timeCell);
+            for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
+                const hourCell = document.createElement('div');
+                hourCell.classList.add('hour-cell');
+                gridContainer.appendChild(hourCell);
+            }
+        }
+        addGridEventListeners();
+    }
     function addGridEventListeners() { let isLmbDown = false; let isRmbDown = false; gridContainer.addEventListener('contextmenu', e => e.preventDefault()); document.addEventListener('mousedown', e => { if (e.target.closest('.schedule-grid')) { if (e.button === 0) isLmbDown = true; else if (e.button === 2) isRmbDown = true; } }); document.addEventListener('mouseup', () => { isLmbDown = false; isRmbDown = false; }); gridContainer.querySelectorAll('.hour-cell').forEach(cell => { cell.addEventListener('mousedown', e => { e.preventDefault(); if (activeView === '__MY_SCHEDULE__') { if (e.button === 0) cell.classList.add('selected'); else if (e.button === 2) cell.classList.remove('selected'); } }); cell.addEventListener('mouseover', () => { if (activeView === '__MY_SCHEDULE__') { if (isLmbDown) cell.classList.add('selected'); else if (isRmbDown) cell.classList.remove('selected'); } }); }); }
 
 
