@@ -4,4 +4,6 @@
 
 Поддерживает песавые чаеса и 3 недели.
 
-<img width="1920" height="991" alt="image" src="https://github.com/user-attachments/assets/60d2a05c-1e83-432d-98ea-de9e8ef11d75" />
+<img width="1920" height="991" alt="image" src="https://github.com/user-attachments/assets/dc017877-3140-465c-9c23-4c72d8c785ba" />
+
+<img width="1920" height="991" alt="image" src="https://github.com/user-attachments/assets/ce9fc81c-e1c2-4497-878e-dc65b6adb730" />
