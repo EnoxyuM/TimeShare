@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TimeShare</title>
+    <style>
+        :root { --cell-size: 35px; }
+
+        body {
+            background-color: #2c2c2c; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            display: flex; justify-content: center; align-items: center; height: 100vh;
+            margin: 0; padding: 10px; box-sizing: border-box; user-select: none; -webkit-user-select: none; overflow: hidden;
+        }
+        .main-layout { display: flex; gap: 20px; align-items: center; width: 100%; height: 100%; justify-content: center; }
+        .schedule-container {
+            flex-shrink: 0; padding: 15px; background-color: #333; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            height: 100%; max-height: calc(100vh - 20px); display: flex; flex-direction: column;
+        }
+        .schedule-grid { display: grid; gap: 2px; grid-template-columns: 50px repeat(7, var(--cell-size)); grid-template-rows: auto repeat(24, var(--cell-size)); }
+        .grid-cell { display: flex; justify-content: center; align-items: center; }
+        .day-header { font-weight: bold; text-transform: uppercase; padding: 2px 0; flex-direction: column; line-height: 1.2; font-size: 13px; }
+        .day-header .date-number { font-size: 12px; font-weight: normal; color: #aaa; }
+        .day-header.current-day { color: #5a9ced; }
+        .day-header.current-day .date-number { color: #5a9ced; font-weight: bold; }
+        .time-label { font-size: 11px; color: #aaa; justify-content: flex-end; padding-right: 8px; }
+        .hour-cell {
+            background-color: #38761d; cursor: pointer; transition: background-color 0.2s, color 0.2s;
+            font-size: 14px; font-weight: bold; color: rgba(255, 255, 255, 0.8); text-shadow: 1px 1px 2px rgba(0,0,0,0.7);
+        }
+        .hour-cell.no-edit { cursor: default; }
+        .hour-cell:hover { filter: brightness(1.2); }
+        .hour-cell.selected { background-color: #cc0000; }
+
+        .sidebar { padding: 20px; background-color: #333; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); min-width: 220px; display: flex; flex-direction: column; align-self: flex-start; }
+        .sidebar .controls { border-bottom: 1px solid #444; padding-bottom: 15px; margin-bottom: 15px; }
+        .sidebar label { font-size: 14px; color: #bbb; }
+        .sidebar input { width: 100%; padding: 8px; margin-top: 8px; margin-bottom: 16px; box-sizing: border-box; background-color: #444; border: 1px solid #666; border-radius: 4px; color: #e0e0e0; font-size: 16px; }
+        .sidebar input:focus { outline: none; border-color: #5a9ced; }
+        .sidebar .button-group { display: flex; gap: 10px; }
+        .sidebar button { flex-grow: 1; padding: 10px; font-size: 14px; font-weight: bold; color: #fff; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.2s; }
+        #copy-btn { background-color: #007bff; }
+        #copy-btn:hover { background-color: #0056b3; }
+        #paste-btn { background-color: #28a745; }
+        #paste-btn:hover { background-color: #1e7e34; }
+        #feedback-message { margin-top: 15px; text-align: center; font-size: 14px; color: #aaa; height: 20px; opacity: 0; transition: opacity 0.3s ease-in-out; }
+        #feedback-message.show { opacity: 1; }
+        .user-list-container { display: flex; flex-direction: column; gap: 8px; }
+        .user-list-container .user-item, .user-list-container .view-item { display: flex; align-items: center; gap: 8px; }
+        .user-list-container button { width: 100%; text-align: left; background-color: #4f4f4f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .user-list-container button:hover { background-color: #5f5f5f; }
+        .user-list-container button.active { background-color: #007bff; }
+        .user-list-container .delete-btn {
+            background-color: transparent; border: none; color: #aaa; font-size: 22px; font-weight: bold; cursor: pointer;
+            line-height: 1; flex-shrink: 0; width: 24px; height: 24px; padding: 0; display: flex; align-items: center; justify-content: center;
+        }
+        .user-list-container .delete-btn:hover { color: #ff6b6b; }
+
+        #instruction-btn {
+            position: absolute; top: 15px; left: 15px; z-index: 100;
+            background-color: #4f4f4f; padding: 8px 12px;
+        }
+        #instruction-btn:hover { background-color: #5f5f5f; }
+
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex; justify-content: center; align-items: center;
+            z-index: 999; opacity: 0; pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+        .modal-overlay.visible { opacity: 1; pointer-events: auto; }
+        .modal-content {
+            background-color: #333; color: #e0e0e0;
+            padding: 25px; border-radius: 8px;
+            max-width: 600px; width: 90%;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.5);
+            position: relative;
+        }
+        .modal-content h2 { margin-top: 0; color: #5a9ced; }
+        .modal-content p, .modal-content li { line-height: 1.6; }
+        .modal-content strong { color: #e0e0e0; }
+        .modal-close-btn {
+            position: absolute; top: 10px; right: 15px;
+            font-size: 28px; font-weight: bold; color: #aaa;
+            background: none; border: none; cursor: pointer;
+        }
+        .modal-close-btn:hover { color: #fff; }
+    </style>
+</head>
+<body>
+
+<button id="instruction-btn">Инструкция</button>
+<div class="modal-overlay" id="modal-overlay">
+    <div class="modal-content">
+        <button class="modal-close-btn" id="modal-close-btn">&times;</button>
+        <h2>Инструкция по использованию</h2>
+        <p>Зеленые ячейки - <strong>свободное время</strong>, красные — <strong>занятое</strong>.</p>
+        <h4>Редактирование своего расписания:</h4>
+        <ul>
+            <li><strong>Зажатие левой кнопки мыши (ЛКМ)</strong> - отметить ячейки как <strong>занятые</strong> (красные).</li>
+            <li><strong>Зажатие правой кнопки мыши (ПКМ)</strong> - отметить ячейки как <strong>свободные</strong> (зеленые).</li>
+            <li>Очистить - <strong>делает все ячейки зелёными</strong>.</li>
+        </ul>
+        <ul>
+            <li><strong>Копировать:</strong> Копирует расписание и введённый ник в буфере обмена. Его можно отправить.</li>
+            <li><strong>Вставить:</strong> Вставляет скопированное расписание и ник. Это добавится в список справа.</li>
+        </ul>
+        <h4>Режимы просмотра:</h4>
+        <ul>
+            <li><strong>Все:</strong> Сводный режим. Показывает, сколько человек свободно в каждый час.
+                <ul>
+                    <li><strong style="color: #1c1c1c; background: #555;">Черный</strong> — все заняты.</li>
+                    <li><strong style="color: red;">Красный</strong> — свободен только 1 человек.</li>
+                    <li><strong style="color: green;">Зеленый</strong> — свободны все.</li>
+                    <li><strong>Градиент</strong> — чем зеленее, тем больше людей свободно.</li>
+                </ul>
+            </li>
+            <li><strong>Кнопка с ником:</strong> Позволяет посмотреть расписание конкретного человека.</li>
+        </ul>
+    </div>
+</div>
+
+<div class="main-layout">
+    <div class="schedule-container" id="schedule-container">
+        <div class="schedule-grid" id="schedule-grid"></div>
+    </div>
+    <div class="sidebar">
+        <div class="controls">
+            <label for="nickname-input">Мой ник:</label>
+            <input type="text" id="nickname-input" placeholder="Введите ваш ник...">
+            <div class="button-group">
+                <button id="copy-btn">Копировать</button>
+                <button id="paste-btn">Вставить</button>
+            </div>
+            <div id="feedback-message"></div>
+        </div>
+        <div class="user-list-container" id="user-list-container"></div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+
+    let users = []; let activeView = '__MY_SCHEDULE__'; const TOTAL_CELLS = 168;
+
+
+    const gridContainer = document.getElementById('schedule-grid');
+    const scheduleContainer = document.getElementById('schedule-container');
+    const nicknameInput = document.getElementById('nickname-input');
+    const copyBtn = document.getElementById('copy-btn');
+    const pasteBtn = document.getElementById('paste-btn');
+    const feedbackMessage = document.getElementById('feedback-message');
+    const userListContainer = document.getElementById('user-list-container');
+    const instructionBtn = document.getElementById('instruction-btn');
+    const modalOverlay = document.getElementById('modal-overlay');
+    const modalCloseBtn = document.getElementById('modal-close-btn');
+
+
+    instructionBtn.addEventListener('click', () => modalOverlay.classList.add('visible'));
+    modalCloseBtn.addEventListener('click', () => modalOverlay.classList.remove('visible'));
+    modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) modalOverlay.classList.remove('visible'); });
+
+
+    function getGradientColor(freeCount, totalUsers) {
+        if (totalUsers <= 1) return 'rgb(0, 255, 0)';
+        const t = (freeCount - 1) / (totalUsers - 1);
+        const r = Math.round(255 * (1 - t));
+        const g = Math.round(255 * t);
+        return `rgb(${r}, ${g}, 0)`;
+    }
+
+
+    function renderUserList() {
+        userListContainer.innerHTML = '';
+
+        const clearItem = document.createElement('div'); clearItem.className = 'view-item';
+        const clearBtn = document.createElement('button'); clearBtn.textContent = 'Очистить';
+        if (activeView === '__MY_SCHEDULE__') clearBtn.classList.add('active');
+        clearBtn.onclick = () => {
+            gridContainer.querySelectorAll('.hour-cell.selected').forEach(cell => cell.classList.remove('selected'));
+            nicknameInput.value = '';
+            activeView = '__MY_SCHEDULE__';
+            render();
+        };
+        clearItem.appendChild(clearBtn); userListContainer.appendChild(clearItem);
+
+        const allItem = document.createElement('div'); allItem.className = 'view-item';
+        const allBtn = document.createElement('button'); allBtn.textContent = 'Все';
+        if (activeView === '__ALL__') allBtn.classList.add('active');
+        allBtn.onclick = () => { activeView = '__ALL__'; render(); };
+        allItem.appendChild(allBtn); userListContainer.appendChild(allItem);
+
+        users.forEach(user => {
+            const userItem = document.createElement('div'); userItem.className = 'user-item';
+            const userBtn = document.createElement('button'); userBtn.textContent = user.nickname;
+            if (activeView === user.nickname) userBtn.classList.add('active');
+            userBtn.onclick = () => { activeView = user.nickname; render(); };
+            const deleteBtn = document.createElement('button'); deleteBtn.className = 'delete-btn'; deleteBtn.innerHTML = '&times;';
+            deleteBtn.onclick = () => { users = users.filter(u => u.nickname !== user.nickname); if(activeView === user.nickname) activeView = '__MY_SCHEDULE__'; render(); };
+            userItem.appendChild(userBtn); userItem.appendChild(deleteBtn); userListContainer.appendChild(userItem);
+        });
+    }
+
+    function renderGrid() {
+        const hourCells = gridContainer.querySelectorAll('.hour-cell');
+        const isEditMode = activeView === '__MY_SCHEDULE__';
+        hourCells.forEach(cell => cell.classList.toggle('no-edit', !isEditMode));
+
+        if (isEditMode) {
+            hourCells.forEach(cell => { cell.textContent = ''; cell.style.backgroundColor = ''; });
+        } else if (activeView === '__ALL__') {
+            const totalUsers = users.length;
+            if (totalUsers === 0) { hourCells.forEach(cell => { cell.style.backgroundColor = ''; cell.textContent = ''; cell.classList.remove('selected'); }); return; }
+            const busyCounts = new Array(TOTAL_CELLS).fill(0);
+            users.forEach(user => { for (let i = 0; i < TOTAL_CELLS; i++) { if ((user.scheduleBytes[Math.floor(i/8)] >> (i%8)) & 1) busyCounts[i]++; }});
+            hourCells.forEach((cell, i) => {
+                const freeCount = totalUsers - busyCounts[i]; cell.classList.remove('selected');
+                if (freeCount === 0) { cell.style.backgroundColor = '#1c1c1c'; cell.textContent = ''; }
+                else { cell.style.backgroundColor = getGradientColor(freeCount, totalUsers); cell.textContent = freeCount; }
+            });
+        } else {
+            const user = users.find(u => u.nickname === activeView);
+            if (!user) { activeView = '__MY_SCHEDULE__'; render(); return; }
+            hourCells.forEach((cell, i) => {
+                const isSelected = (user.scheduleBytes[Math.floor(i/8)] >> (i%8)) & 1;
+                cell.classList.toggle('selected', isSelected);
+                cell.textContent = ''; cell.style.backgroundColor = '';
+            });
+        }
+    }
+
+    function render() { renderUserList(); renderGrid(); }
+
+
+    function resizeGrid() { const p = parseFloat(getComputedStyle(scheduleContainer).paddingTop) * 2; const h = scheduleContainer.clientHeight - p; const w = scheduleContainer.clientWidth - p; const s = Math.floor(Math.min((w - 50) / 7, (h - 40) / 24)) - 2; document.documentElement.style.setProperty('--cell-size', `${s}px`); }
+    function generateGrid() { gridContainer.innerHTML = ''; const today = new Date(); const currentDayIndex = (today.getDay() + 6) % 7; const monday = new Date(today); monday.setDate(today.getDate() - currentDayIndex); const weekDates = Array.from({length: 7}, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d.getDate(); }); gridContainer.appendChild(document.createElement('div')); ['пн','вт','ср','чт','пт','сб','вс'].forEach((day, index) => { const dayCell = document.createElement('div'); dayCell.className = 'grid-cell day-header'; if (index === currentDayIndex) dayCell.classList.add('current-day'); dayCell.innerHTML = `<span>${day}</span><span class="date-number">${weekDates[index]}</span>`; gridContainer.appendChild(dayCell); }); for (let hour = 0; hour < 24; hour++) { const displayHour = (hour + 12) % 24; const timeCell = document.createElement('div'); timeCell.className = 'grid-cell time-label'; timeCell.textContent = `${displayHour.toString().padStart(2, '0')}:00`; gridContainer.appendChild(timeCell); for (let dayIndex = 0; dayIndex < 7; dayIndex++) { const hourCell = document.createElement('div'); hourCell.classList.add('hour-cell'); gridContainer.appendChild(hourCell); } } addGridEventListeners(); }
+    function addGridEventListeners() { let isLmbDown = false; let isRmbDown = false; gridContainer.addEventListener('contextmenu', e => e.preventDefault()); document.addEventListener('mousedown', e => { if (e.target.closest('.schedule-grid')) { if (e.button === 0) isLmbDown = true; else if (e.button === 2) isRmbDown = true; } }); document.addEventListener('mouseup', () => { isLmbDown = false; isRmbDown = false; }); gridContainer.querySelectorAll('.hour-cell').forEach(cell => { cell.addEventListener('mousedown', e => { e.preventDefault(); if (activeView === '__MY_SCHEDULE__') { if (e.button === 0) cell.classList.add('selected'); else if (e.button === 2) cell.classList.remove('selected'); } }); cell.addEventListener('mouseover', () => { if (activeView === '__MY_SCHEDULE__') { if (isLmbDown) cell.classList.add('selected'); else if (isRmbDown) cell.classList.remove('selected'); } }); }); }
+
+
+    pasteBtn.addEventListener('click', async () => { try { const base64String = await navigator.clipboard.readText(); const compressedData = binaryStringToUint8Array(atob(base64String)); const decompressedStream = new Response(compressedData).body.pipeThrough(new DecompressionStream('gzip')); const payload = await new Response(decompressedStream).arrayBuffer(); const payloadBytes = new Uint8Array(payload); const nickLength = payloadBytes[0]; const nickBytes = payloadBytes.slice(1, 1 + nickLength); const scheduleBytes = payloadBytes.slice(1 + nickLength); const nickname = new TextDecoder().decode(nickBytes); if (!nickname) { showFeedback("В данных отсутствует ник!", true); return; } const existingUserIndex = users.findIndex(u => u.nickname === nickname); if (existingUserIndex !== -1) { users[existingUserIndex].scheduleBytes = scheduleBytes; } else { users.push({ nickname, scheduleBytes }); } activeView = nickname; render(); showFeedback(`Данные для "${nickname}" вставлены!`); } catch (err) { console.error('Ошибка вставки:', err); showFeedback("Неверный формат данных!", true); } });
+    copyBtn.addEventListener('click', async () => { try { if (activeView !== '__MY_SCHEDULE__') { showFeedback("Сначала перейдите в режим редактирования!", true); return; } const nickname = nicknameInput.value; if (!nickname) { showFeedback("Введите свой ник для копирования!", true); return; } const nickBytes = new TextEncoder().encode(nickname); if (nickBytes.length > 255) { showFeedback("Ник слишком длинный!", true); return; } const scheduleBytes = new Uint8Array(TOTAL_CELLS / 8); gridContainer.querySelectorAll('.hour-cell').forEach((cell, i) => { if (cell.classList.contains('selected')) { scheduleBytes[Math.floor(i/8)]|=(1<<(i%8)); } }); const payload = new Uint8Array(1 + nickBytes.length + scheduleBytes.length); payload[0] = nickBytes.length; payload.set(nickBytes, 1); payload.set(scheduleBytes, 1 + nickBytes.length); const compressedStream = new Response(payload).body.pipeThrough(new CompressionStream('gzip')); const compressedData = await new Response(compressedStream).arrayBuffer(); const base64String = btoa(Uint8ArrayToBinaryString(new Uint8Array(compressedData))); await navigator.clipboard.writeText(base64String); showFeedback("Ваши данные скопированы!"); } catch (err) { console.error('Ошибка копирования:', err); showFeedback("Ошибка копирования!", true); }});
+    let feedbackTimeout; function showFeedback(m,e=false){clearTimeout(feedbackTimeout);feedbackMessage.textContent=m;feedbackMessage.style.color=e?'#ff6b6b':'#aaa';feedbackMessage.classList.add('show');feedbackTimeout=setTimeout(()=>feedbackMessage.classList.remove('show'),3000);}
+    function Uint8ArrayToBinaryString(u8a){let s='';u8a.forEach(b=>{s+=String.fromCharCode(b);});return s;} function binaryStringToUint8Array(s){const l=s.length;const u8a=new Uint8Array(l);for(let i=0;i<l;i++){u8a[i]=s.charCodeAt(i);}return u8a;}
+
+
+    generateGrid(); resizeGrid(); render(); window.addEventListener('resize', resizeGrid);
+});
+</script>
+</body>
+</html>
