@@ -16,13 +16,25 @@
         .schedule-container {
             flex-shrink: 0; padding: 15px; background-color: #333; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
             height: 100%; max-height: calc(100vh - 20px); display: flex; flex-direction: column;
+            overflow-x: auto;
         }
-        .schedule-grid { display: grid; gap: 2px; grid-template-columns: 50px repeat(7, var(--cell-size)); grid-template-rows: auto repeat(24, var(--cell-size)); }
+        .schedule-wrapper {
+            display: flex;
+            gap: 20px;
+            height: 100%;
+        }
+        .week-grid {
+            display: grid;
+            gap: 2px;
+            grid-template-columns: 50px repeat(7, var(--cell-size));
+            grid-template-rows: auto repeat(24, var(--cell-size));
+        }
+
         .grid-cell { display: flex; justify-content: center; align-items: center; }
         .day-header { font-weight: bold; text-transform: uppercase; padding: 2px 0; flex-direction: column; line-height: 1.2; font-size: 13px; }
-        .day-header .date-number { font-size: 12px; font-weight: normal; color: #aaa; }
         .day-header.current-day { color: #5a9ced; }
         .day-header.current-day .date-number { color: #5a9ced; font-weight: bold; }
+        .day-header .date-number { font-size: 12px; font-weight: normal; color: #aaa; }
         .time-label { font-size: 11px; color: #aaa; justify-content: flex-end; padding-right: 8px; }
         .hour-cell {
             background-color: #38761d; cursor: pointer; transition: background-color 0.2s, color 0.2s;
@@ -32,12 +44,13 @@
         .hour-cell:hover { filter: brightness(1.2); }
         .hour-cell.selected { background-color: #cc0000; }
 
-        .sidebar { padding: 20px; background-color: #333; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); min-width: 220px; display: flex; flex-direction: column; align-self: flex-start; }
+        .sidebar { padding: 20px; background-color: #333; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4); min-width: 250px; display: flex; flex-direction: column; align-self: flex-start; }
         .sidebar .controls { border-bottom: 1px solid #444; padding-bottom: 15px; margin-bottom: 15px; }
-        .sidebar label { font-size: 14px; color: #bbb; }
-        .sidebar input { width: 100%; padding: 8px; margin-top: 8px; margin-bottom: 16px; box-sizing: border-box; background-color: #444; border: 1px solid #666; border-radius: 4px; color: #e0e0e0; font-size: 16px; }
-        .sidebar input:focus { outline: none; border-color: #5a9ced; }
-        .sidebar .button-group { display: flex; gap: 10px; }
+        .sidebar label { display: block; font-size: 14px; color: #bbb; margin-bottom: 8px; }
+        .sidebar input, .sidebar select { width: 100%; padding: 8px; margin-bottom: 16px; box-sizing: border-box; background-color: #444; border: 1px solid #666; border-radius: 4px; color: #e0e0e0; font-size: 16px; }
+        .sidebar input:focus, .sidebar select:focus { outline: none; border-color: #5a9ced; }
+        .sidebar .tz-warning { font-size: 12px; color: #999; margin: 0 0 10px 0; line-height: 1.4; }
+        .sidebar .button-group { display: flex; gap: 10px; margin-top: 8px;}
         .sidebar button { flex-grow: 1; padding: 10px; font-size: 14px; font-weight: bold; color: #fff; border: none; border-radius: 4px; cursor: pointer; transition: background-color 0.2s; }
         #copy-btn { background-color: #007bff; }
         #copy-btn:hover { background-color: #0056b3; }
@@ -103,8 +116,9 @@
             <li>Очистить - <strong>делает все ячейки зелёными</strong>.</li>
         </ul>
         <ul>
-            <li><strong>Копировать:</strong> Копирует расписание и введённый ник в буфере обмена. Его можно отправить.</li>
-            <li><strong>Вставить:</strong> Вставляет скопированное расписание и ник. Это добавится в список справа.</li>
+            <li><strong>Копировать:</strong> Копирует расписание, ник и ваш часовой пояс в буфер обмена.</li>
+            <li><strong>Вставить:</strong> Вставляет расписание, автоматически корректируя его под ваш часовой пояс.</li>
+            <li><strong>Смена часового пояса:</strong> При смене пояса в списке все чужие расписания будут пересчитаны и отображены корректно для вас.</li>
         </ul>
         <h4>Режимы просмотра:</h4>
         <ul>
@@ -123,12 +137,17 @@
 
 <div class="main-layout">
     <div class="schedule-container" id="schedule-container">
-        <div class="schedule-grid" id="schedule-grid"></div>
+        <div class="schedule-wrapper" id="schedule-wrapper"></div>
     </div>
     <div class="sidebar">
         <div class="controls">
             <label for="nickname-input">Мой ник:</label>
             <input type="text" id="nickname-input" placeholder="Введите ваш ник...">
+
+            <label for="timezone-select">Ваш часовой пояс:</label>
+            <p class="tz-warning">Если вы используете VPN, ваш часовой пояс может определиться неточно — поменяйте его в списке.</p>
+            <select id="timezone-select"></select>
+
             <div class="button-group">
                 <button id="copy-btn">Копировать</button>
                 <button id="paste-btn">Вставить</button>
@@ -142,11 +161,17 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
 
-    let users = []; let activeView = '__MY_SCHEDULE__'; const TOTAL_CELLS = 168;
+    let users = []; 
+    let activeView = '__MY_SCHEDULE__';
+    const WEEKS_TO_SHOW = 3;
+    const DAYS_PER_WEEK = 7;
+    const HOURS_PER_DAY = 24;
+    const CELLS_PER_WEEK = DAYS_PER_WEEK * HOURS_PER_DAY;
+    const TOTAL_DAYS = WEEKS_TO_SHOW * DAYS_PER_WEEK;
+    const TOTAL_CELLS = TOTAL_DAYS * HOURS_PER_DAY;
 
-
-    const gridContainer = document.getElementById('schedule-grid');
     const scheduleContainer = document.getElementById('schedule-container');
+    const scheduleWrapper = document.getElementById('schedule-wrapper');
     const nicknameInput = document.getElementById('nickname-input');
     const copyBtn = document.getElementById('copy-btn');
     const pasteBtn = document.getElementById('paste-btn');
@@ -155,21 +180,37 @@ document.addEventListener('DOMContentLoaded', () => {
     const instructionBtn = document.getElementById('instruction-btn');
     const modalOverlay = document.getElementById('modal-overlay');
     const modalCloseBtn = document.getElementById('modal-close-btn');
-
+    const timezoneSelect = document.getElementById('timezone-select');
 
     instructionBtn.addEventListener('click', () => modalOverlay.classList.add('visible'));
     modalCloseBtn.addEventListener('click', () => modalOverlay.classList.remove('visible'));
     modalOverlay.addEventListener('click', (e) => { if (e.target === modalOverlay) modalOverlay.classList.remove('visible'); });
+    timezoneSelect.addEventListener('change', render);
 
+    function populateTimezoneSelector() {
+        const detectedOffset = new Date().getTimezoneOffset() / -60;
+        for (let i = 14; i >= -12; i -= 0.5) {
+            const option = document.createElement('option');
+            const sign = i >= 0 ? '+' : '-';
+            const absI = Math.abs(i);
+            const hours = Math.floor(absI).toString().padStart(2, '0');
+            const minutes = (absI % 1 !== 0) ? '30' : '00';
+            option.value = i;
+            option.textContent = `GMT${sign}${hours}:${minutes}`;
+            timezoneSelect.appendChild(option);
+        }
+        timezoneSelect.value = detectedOffset;
+    }
 
     function getGradientColor(freeCount, totalUsers) {
-        if (totalUsers <= 1) return 'rgb(0, 255, 0)';
+        if (totalUsers === 0) return '#38761d';
+        if (totalUsers === 1) return freeCount === 1 ? 'rgb(0, 255, 0)' : '#1c1c1c';
+        if (freeCount === 0) return '#1c1c1c';
         const t = (freeCount - 1) / (totalUsers - 1);
         const r = Math.round(255 * (1 - t));
         const g = Math.round(255 * t);
         return `rgb(${r}, ${g}, 0)`;
     }
-
 
     function renderUserList() {
         userListContainer.innerHTML = '';
@@ -178,7 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const clearBtn = document.createElement('button'); clearBtn.textContent = 'Очистить';
         if (activeView === '__MY_SCHEDULE__') clearBtn.classList.add('active');
         clearBtn.onclick = () => {
-            gridContainer.querySelectorAll('.hour-cell.selected').forEach(cell => cell.classList.remove('selected'));
+            scheduleWrapper.querySelectorAll('.hour-cell.selected').forEach(cell => cell.classList.remove('selected'));
             nicknameInput.value = '';
             activeView = '__MY_SCHEDULE__';
             render();
@@ -186,7 +227,8 @@ document.addEventListener('DOMContentLoaded', () => {
         clearItem.appendChild(clearBtn); userListContainer.appendChild(clearItem);
 
         const allItem = document.createElement('div'); allItem.className = 'view-item';
-        const allBtn = document.createElement('button'); allBtn.textContent = 'Все';
+        const allBtn = document.createElement('button');
+        allBtn.textContent = `Все(${users.length})`;
         if (activeView === '__ALL__') allBtn.classList.add('active');
         allBtn.onclick = () => { activeView = '__ALL__'; render(); };
         allItem.appendChild(allBtn); userListContainer.appendChild(allItem);
@@ -203,75 +245,257 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderGrid() {
-        const hourCells = gridContainer.querySelectorAll('.hour-cell');
+        const hourCells = scheduleWrapper.querySelectorAll('.hour-cell');
         const isEditMode = activeView === '__MY_SCHEDULE__';
         hourCells.forEach(cell => cell.classList.toggle('no-edit', !isEditMode));
+        const viewerOffsetHours = parseFloat(timezoneSelect.value);
 
         if (isEditMode) {
             hourCells.forEach(cell => { cell.textContent = ''; cell.style.backgroundColor = ''; });
         } else if (activeView === '__ALL__') {
             const totalUsers = users.length;
-            if (totalUsers === 0) { hourCells.forEach(cell => { cell.style.backgroundColor = ''; cell.textContent = ''; cell.classList.remove('selected'); }); return; }
+            if (totalUsers === 0) {
+                hourCells.forEach(cell => { cell.style.backgroundColor = ''; cell.textContent = ''; cell.classList.remove('selected'); });
+                return;
+            }
             const busyCounts = new Array(TOTAL_CELLS).fill(0);
-            users.forEach(user => { for (let i = 0; i < TOTAL_CELLS; i++) { if ((user.scheduleBytes[Math.floor(i/8)] >> (i%8)) & 1) busyCounts[i]++; }});
+
+            users.forEach(user => {
+                const hourShift = viewerOffsetHours - user.senderOffsetHours;
+                const adjustedScheduleBytes = shiftSchedule(user.originalScheduleBytes, hourShift);
+                for (let i = 0; i < TOTAL_CELLS; i++) {
+                    if ((adjustedScheduleBytes[Math.floor(i / 8)] >> (i % 8)) & 1) {
+                        busyCounts[i]++;
+                    }
+                }
+            });
+
             hourCells.forEach((cell, i) => {
-                const freeCount = totalUsers - busyCounts[i]; cell.classList.remove('selected');
-                if (freeCount === 0) { cell.style.backgroundColor = '#1c1c1c'; cell.textContent = ''; }
-                else { cell.style.backgroundColor = getGradientColor(freeCount, totalUsers); cell.textContent = freeCount; }
+                const freeCount = totalUsers - busyCounts[i];
+                cell.classList.remove('selected');
+                cell.style.backgroundColor = getGradientColor(freeCount, totalUsers);
+                cell.textContent = freeCount > 0 ? freeCount : '';
             });
         } else {
             const user = users.find(u => u.nickname === activeView);
             if (!user) { activeView = '__MY_SCHEDULE__'; render(); return; }
+
+            const hourShift = viewerOffsetHours - user.senderOffsetHours;
+            const adjustedScheduleBytes = shiftSchedule(user.originalScheduleBytes, hourShift);
+
             hourCells.forEach((cell, i) => {
-                const isSelected = (user.scheduleBytes[Math.floor(i/8)] >> (i%8)) & 1;
+                const isSelected = (adjustedScheduleBytes[Math.floor(i / 8)] >> (i % 8)) & 1;
                 cell.classList.toggle('selected', isSelected);
-                cell.textContent = ''; cell.style.backgroundColor = '';
+                cell.textContent = '';
+                cell.style.backgroundColor = '';
             });
         }
     }
 
     function render() { renderUserList(); renderGrid(); }
 
-
-    function resizeGrid() { const p = parseFloat(getComputedStyle(scheduleContainer).paddingTop) * 2; const h = scheduleContainer.clientHeight - p; const w = scheduleContainer.clientWidth - p; const s = Math.floor(Math.min((w - 50) / 7, (h - 40) / 24)) - 2; document.documentElement.style.setProperty('--cell-size', `${s}px`); }
+    function resizeGrid() { 
+        const p = parseFloat(getComputedStyle(scheduleContainer).paddingTop) * 2;
+        const h = scheduleContainer.clientHeight - p;
+        const w = scheduleContainer.clientWidth - p;
+        const s = Math.floor(Math.min((w - 50 * WEEKS_TO_SHOW - 20 * (WEEKS_TO_SHOW - 1)) / TOTAL_DAYS, (h - 40) / HOURS_PER_DAY)) - 2;
+        document.documentElement.style.setProperty('--cell-size', `${s}px`);
+    }
+    
     function generateGrid() {
-        gridContainer.innerHTML = '';
+        scheduleWrapper.innerHTML = '';
         const today = new Date();
-        const currentDayIndex = (today.getDay() + 6) % 7;
-        const monday = new Date(today);
-        monday.setDate(today.getDate() - currentDayIndex);
-        const weekDates = Array.from({length: 7}, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d.getDate(); });
-        gridContainer.appendChild(document.createElement('div'));
-        ['пн','вт','ср','чт','пт','сб','вс'].forEach((day, index) => {
-            const dayCell = document.createElement('div');
-            dayCell.className = 'grid-cell day-header';
-            if (index === currentDayIndex) dayCell.classList.add('current-day');
-            dayCell.innerHTML = `<span>${day}</span><span class="date-number">${weekDates[index]}</span>`;
-            gridContainer.appendChild(dayCell);
-        });
-        for (let hour = 0; hour < 24; hour++) {
-            const timeCell = document.createElement('div');
-            timeCell.className = 'grid-cell time-label';
-            timeCell.textContent = `${hour.toString().padStart(2, '0')}:00`;
-            gridContainer.appendChild(timeCell);
-            for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
-                const hourCell = document.createElement('div');
-                hourCell.classList.add('hour-cell');
-                gridContainer.appendChild(hourCell);
+        const todayDayIndex = (today.getDay() + 6) % 7;
+        const todayDate = today.getDate();
+        const todayMonth = today.getMonth();
+
+        const startMonday = new Date(today);
+        startMonday.setDate(today.getDate() - todayDayIndex - DAYS_PER_WEEK);
+
+        const weekDays = ['пн','вт','ср','чт','пт','сб','вс'];
+        
+        let allHourCells = [];
+
+        for (let week = 0; week < WEEKS_TO_SHOW; week++) {
+            const weekGrid = document.createElement('div');
+            weekGrid.className = 'week-grid';
+            
+            weekGrid.appendChild(document.createElement('div'));
+
+            for (let day = 0; day < DAYS_PER_WEEK; day++) {
+                const dayHeader = document.createElement('div');
+                const currentDate = new Date(startMonday);
+                currentDate.setDate(startMonday.getDate() + (week * DAYS_PER_WEEK) + day);
+                
+                dayHeader.className = 'grid-cell day-header';
+                if (currentDate.getDate() === todayDate && currentDate.getMonth() === todayMonth) {
+                    dayHeader.classList.add('current-day');
+                }
+                dayHeader.innerHTML = `<span>${weekDays[day]}</span><span class="date-number">${currentDate.getDate()}</span>`;
+                weekGrid.appendChild(dayHeader);
+            }
+
+            for (let hour = 0; hour < HOURS_PER_DAY; hour++) {
+                const timeLabel = document.createElement('div');
+                timeLabel.className = 'grid-cell time-label';
+                timeLabel.textContent = `${hour.toString().padStart(2, '0')}:00`;
+                weekGrid.appendChild(timeLabel);
+
+                for (let day = 0; day < DAYS_PER_WEEK; day++) {
+                    const hourCell = document.createElement('div');
+                    hourCell.classList.add('hour-cell');
+                    allHourCells.push(hourCell);
+                    weekGrid.appendChild(hourCell);
+                }
+            }
+            scheduleWrapper.appendChild(weekGrid);
+        }
+
+        addGridEventListeners(allHourCells);
+    }
+    
+    function addGridEventListeners(hourCells) { 
+        let isLmbDown = false; let isRmbDown = false; 
+        scheduleWrapper.addEventListener('contextmenu', e => e.preventDefault()); 
+        document.addEventListener('mousedown', e => { if (e.target.closest('.schedule-wrapper')) { if (e.button === 0) isLmbDown = true; else if (e.button === 2) isRmbDown = true; } }); 
+        document.addEventListener('mouseup', () => { isLmbDown = false; isRmbDown = false; }); 
+        
+        hourCells.forEach(cell => { 
+            cell.addEventListener('mousedown', e => { 
+                e.preventDefault(); 
+                if (activeView === '__MY_SCHEDULE__') { 
+                    if (e.button === 0) cell.classList.add('selected'); 
+                    else if (e.button === 2) cell.classList.remove('selected'); 
+                } 
+            }); 
+            cell.addEventListener('mouseover', () => { 
+                if (activeView === '__MY_SCHEDULE__') { 
+                    if (isLmbDown) cell.classList.add('selected'); 
+                    else if (isRmbDown) cell.classList.remove('selected'); 
+                } 
+            }); 
+        }); 
+    }
+
+    // --- ОКОНЧАТЕЛЬНО ИСПРАВЛЕННАЯ ФУНКЦИЯ ---
+    function shiftSchedule(scheduleBytes, hourShift) {
+        const roundedHourShift = Math.round(hourShift);
+        if (roundedHourShift === 0) return scheduleBytes;
+
+        const newScheduleBytes = new Uint8Array(Math.ceil(TOTAL_CELLS / 8));
+        
+        for (let destIndex = 0; destIndex < TOTAL_CELLS; destIndex++) {
+            // 1. Декодируем линейный индекс ячейки в ее реальные координаты
+            const destWeek = Math.floor(destIndex / CELLS_PER_WEEK);
+            const destIndexInWeek = destIndex % CELLS_PER_WEEK;
+            const destHour = Math.floor(destIndexInWeek / DAYS_PER_WEEK);
+            const destDayInWeek = destIndexInWeek % DAYS_PER_WEEK;
+            
+            // 2. Преобразуем координаты в абсолютное время с начала периода
+            const destAbsDay = destWeek * DAYS_PER_WEEK + destDayInWeek;
+            const destAbsHour = destAbsDay * HOURS_PER_DAY + destHour;
+            
+            const sourceAbsHour = (destAbsHour - roundedHourShift + TOTAL_CELLS) % TOTAL_CELLS;
+            
+            // 4. Преобразуем абсолютное время источника обратно в координаты
+            const sourceAbsDay = Math.floor(sourceAbsHour / HOURS_PER_DAY);
+            const sourceHour = sourceAbsHour % HOURS_PER_DAY;
+            const sourceWeek = Math.floor(sourceAbsDay / DAYS_PER_WEEK);
+            const sourceDayInWeek = sourceAbsDay % DAYS_PER_WEEK;
+
+            // 5. Кодируем координаты источника обратно в линейный индекс
+            const sourceIndexInWeek = sourceHour * DAYS_PER_WEEK + sourceDayInWeek;
+            const sourceIndex = sourceWeek * CELLS_PER_WEEK + sourceIndexInWeek;
+
+            // 6. Проверяем бит в источнике и устанавливаем его в цели
+            const isSourceBitSet = (scheduleBytes[Math.floor(sourceIndex / 8)] >> (sourceIndex % 8)) & 1;
+            if (isSourceBitSet) {
+                newScheduleBytes[Math.floor(destIndex / 8)] |= (1 << (destIndex % 8));
             }
         }
-        addGridEventListeners();
+        return newScheduleBytes;
     }
-    function addGridEventListeners() { let isLmbDown = false; let isRmbDown = false; gridContainer.addEventListener('contextmenu', e => e.preventDefault()); document.addEventListener('mousedown', e => { if (e.target.closest('.schedule-grid')) { if (e.button === 0) isLmbDown = true; else if (e.button === 2) isRmbDown = true; } }); document.addEventListener('mouseup', () => { isLmbDown = false; isRmbDown = false; }); gridContainer.querySelectorAll('.hour-cell').forEach(cell => { cell.addEventListener('mousedown', e => { e.preventDefault(); if (activeView === '__MY_SCHEDULE__') { if (e.button === 0) cell.classList.add('selected'); else if (e.button === 2) cell.classList.remove('selected'); } }); cell.addEventListener('mouseover', () => { if (activeView === '__MY_SCHEDULE__') { if (isLmbDown) cell.classList.add('selected'); else if (isRmbDown) cell.classList.remove('selected'); } }); }); }
 
+    pasteBtn.addEventListener('click', async () => {
+        try {
+            const base64String = await navigator.clipboard.readText();
+            const compressedData = binaryStringToUint8Array(atob(base64String));
+            const decompressedStream = new Response(compressedData).body.pipeThrough(new DecompressionStream('gzip'));
+            const payload = await new Response(decompressedStream).arrayBuffer();
+            
+            const dataView = new DataView(payload);
+            const nickLength = dataView.getUint8(0);
+            const senderOffsetMinutes = dataView.getInt16(1, true);
+            const nickBytes = new Uint8Array(payload, 3, nickLength);
+            const originalScheduleBytes = new Uint8Array(payload, 3 + nickLength);
+            
+            const nickname = new TextDecoder().decode(nickBytes);
+            if (!nickname) { showFeedback("В данных отсутствует ник!", true); return; }
 
-    pasteBtn.addEventListener('click', async () => { try { const base64String = await navigator.clipboard.readText(); const compressedData = binaryStringToUint8Array(atob(base64String)); const decompressedStream = new Response(compressedData).body.pipeThrough(new DecompressionStream('gzip')); const payload = await new Response(decompressedStream).arrayBuffer(); const payloadBytes = new Uint8Array(payload); const nickLength = payloadBytes[0]; const nickBytes = payloadBytes.slice(1, 1 + nickLength); const scheduleBytes = payloadBytes.slice(1 + nickLength); const nickname = new TextDecoder().decode(nickBytes); if (!nickname) { showFeedback("В данных отсутствует ник!", true); return; } const existingUserIndex = users.findIndex(u => u.nickname === nickname); if (existingUserIndex !== -1) { users[existingUserIndex].scheduleBytes = scheduleBytes; } else { users.push({ nickname, scheduleBytes }); } activeView = nickname; render(); showFeedback(`Данные для "${nickname}" вставлены!`); } catch (err) { console.error('Ошибка вставки:', err); showFeedback("Неверный формат данных!", true); } });
-    copyBtn.addEventListener('click', async () => { try { if (activeView !== '__MY_SCHEDULE__') { showFeedback("Сначала перейдите в режим редактирования!", true); return; } const nickname = nicknameInput.value; if (!nickname) { showFeedback("Введите свой ник для копирования!", true); return; } const nickBytes = new TextEncoder().encode(nickname); if (nickBytes.length > 255) { showFeedback("Ник слишком длинный!", true); return; } const scheduleBytes = new Uint8Array(TOTAL_CELLS / 8); gridContainer.querySelectorAll('.hour-cell').forEach((cell, i) => { if (cell.classList.contains('selected')) { scheduleBytes[Math.floor(i/8)]|=(1<<(i%8)); } }); const payload = new Uint8Array(1 + nickBytes.length + scheduleBytes.length); payload[0] = nickBytes.length; payload.set(nickBytes, 1); payload.set(scheduleBytes, 1 + nickBytes.length); const compressedStream = new Response(payload).body.pipeThrough(new CompressionStream('gzip')); const compressedData = await new Response(compressedStream).arrayBuffer(); const base64String = btoa(Uint8ArrayToBinaryString(new Uint8Array(compressedData))); await navigator.clipboard.writeText(base64String); showFeedback("скопировано в буфер обмена!"); } catch (err) { console.error('Ошибка копирования:', err); showFeedback("Ошибка копирования!", true); }});
+            if (originalScheduleBytes.length !== Math.ceil(TOTAL_CELLS / 8)) {
+                showFeedback("Ошибка: формат данных не соответствует (ожидалось 3 недели)", true);
+                return;
+            }
+
+            const senderOffsetHours = senderOffsetMinutes / 60;
+            const newUser = { nickname, originalScheduleBytes, senderOffsetHours };
+            
+            const existingUserIndex = users.findIndex(u => u.nickname === nickname);
+            if (existingUserIndex !== -1) {
+                users[existingUserIndex] = newUser;
+            } else {
+                users.push(newUser);
+            }
+            activeView = nickname;
+            render();
+            showFeedback(`Данные для "${nickname}" вставлены!`);
+        } catch (err) {
+            console.error('Ошибка вставки:', err);
+            showFeedback("Неверный формат данных!", true);
+        }
+    });
+
+    copyBtn.addEventListener('click', async () => {
+        try {
+            if (activeView !== '__MY_SCHEDULE__') { showFeedback("Сначала перейдите в режим редактирования!", true); return; }
+            const nickname = nicknameInput.value;
+            if (!nickname) { showFeedback("Введите свой ник для копирования!", true); return; }
+            
+            const nickBytes = new TextEncoder().encode(nickname);
+            if (nickBytes.length > 255) { showFeedback("Ник слишком длинный!", true); return; }
+            
+            const scheduleBytes = new Uint8Array(Math.ceil(TOTAL_CELLS / 8));
+            scheduleWrapper.querySelectorAll('.hour-cell').forEach((cell, i) => { if (cell.classList.contains('selected')) { scheduleBytes[Math.floor(i/8)]|=(1<<(i%8)); } });
+
+            const timezoneOffsetMinutes = parseFloat(timezoneSelect.value) * 60;
+            
+            const payload = new Uint8Array(1 + 2 + nickBytes.length + scheduleBytes.length);
+            const dataView = new DataView(payload.buffer);
+            
+            dataView.setUint8(0, nickBytes.length);
+            dataView.setInt16(1, timezoneOffsetMinutes, true);
+            payload.set(nickBytes, 3);
+            payload.set(scheduleBytes, 3 + nickBytes.length);
+
+            const compressedStream = new Response(payload).body.pipeThrough(new CompressionStream('gzip'));
+            const compressedData = await new Response(compressedStream).arrayBuffer();
+            const base64String = btoa(Uint8ArrayToBinaryString(new Uint8Array(compressedData)));
+            await navigator.clipboard.writeText(base64String);
+            showFeedback("Скопировано в буфер обмена!");
+        } catch (err) {
+            console.error('Ошибка копирования:', err);
+            showFeedback("Ошибка копирования!", true);
+        }
+    });
+    
     let feedbackTimeout; function showFeedback(m,e=false){clearTimeout(feedbackTimeout);feedbackMessage.textContent=m;feedbackMessage.style.color=e?'#ff6b6b':'#aaa';feedbackMessage.classList.add('show');feedbackTimeout=setTimeout(()=>feedbackMessage.classList.remove('show'),3000);}
     function Uint8ArrayToBinaryString(u8a){let s='';u8a.forEach(b=>{s+=String.fromCharCode(b);});return s;} function binaryStringToUint8Array(s){const l=s.length;const u8a=new Uint8Array(l);for(let i=0;i<l;i++){u8a[i]=s.charCodeAt(i);}return u8a;}
 
-
-    generateGrid(); resizeGrid(); render(); window.addEventListener('resize', resizeGrid);
+    populateTimezoneSelector();
+    generateGrid();
+    resizeGrid();
+    render();
+    window.addEventListener('resize', resizeGrid);
 });
 </script>
 </body>
