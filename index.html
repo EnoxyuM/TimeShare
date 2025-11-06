@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Time Share</title>
+    <title>TimeShare</title>
     <style>
         :root { --cell-size: 35px; }
 
@@ -17,7 +17,6 @@
             flex-shrink: 0; padding: 15px; background-color: #333; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
             height: 100%; max-height: calc(100vh - 20px); display: flex; flex-direction: column;
             overflow-x: auto;
-            -webkit-overflow-scrolling: touch;
         }
         .schedule-wrapper {
             display: flex;
@@ -112,9 +111,9 @@
         <p>Зеленые ячейки - <strong>свободное время</strong>, красные — <strong>занятое</strong>.</p>
         <h4>Редактирование своего расписания:</h4>
         <ul>
-            <li><strong>На компьютере:</strong> Зажмите левую (ЛКМ) или правую (ПКМ) кнопку мыши и проведите по ячейкам для их выбора или отмены.</li>
-            <li><strong>На телефоне:</strong> Коснитесь первой ячейки и, не отпуская, ведите пальцем по экрану для выбора диапазона. Режим (выбор или отмена) определяется состоянием первой ячейки.</li>
-            <li><strong>Очистить:</strong> Делает все ячейки зелёными.</li>
+            <li><strong>Зажатие левой кнопки мыши (ЛКМ)</strong> - отметить ячейки как <strong>занятые</strong> (красные).</li>
+            <li><strong>Зажатие правой кнопки мыши (ПКМ)</strong> - отметить ячейки как <strong>свободные</strong> (зеленые).</li>
+            <li>Очистить - <strong>делает все ячейки зелёными</strong>.</li>
         </ul>
         <ul>
             <li><strong>Копировать:</strong> Копирует расписание, ник и ваш часовой пояс в буфер обмена.</li>
@@ -356,22 +355,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function addGridEventListeners(hourCells) { 
-        let isLmbDown = false;
-        let isRmbDown = false; 
-        
+        let isLmbDown = false; let isRmbDown = false; 
         scheduleWrapper.addEventListener('contextmenu', e => e.preventDefault()); 
-        
-        document.addEventListener('mousedown', e => { 
-            if (e.target.closest('.schedule-wrapper')) { 
-                if (e.button === 0) isLmbDown = true; 
-                else if (e.button === 2) isRmbDown = true; 
-            } 
-        }); 
-        
-        document.addEventListener('mouseup', () => { 
-            isLmbDown = false; 
-            isRmbDown = false; 
-        }); 
+        document.addEventListener('mousedown', e => { if (e.target.closest('.schedule-wrapper')) { if (e.button === 0) isLmbDown = true; else if (e.button === 2) isRmbDown = true; } }); 
+        document.addEventListener('mouseup', () => { isLmbDown = false; isRmbDown = false; }); 
         
         hourCells.forEach(cell => { 
             cell.addEventListener('mousedown', e => { 
@@ -387,51 +374,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     else if (isRmbDown) cell.classList.remove('selected'); 
                 } 
             }); 
-        });
-        let isTouchSelecting = false;
-        let touchSelectionMode = null;
-        let lastTouchedCell = null;
-
-        scheduleWrapper.addEventListener('touchstart', (e) => {
-            const cell = e.target;
-            if (activeView === '__MY_SCHEDULE__' && cell.classList.contains('hour-cell')) {
-                isTouchSelecting = true;
-                touchSelectionMode = cell.classList.contains('selected') ? 'deselect' : 'select';
-                
-                if (touchSelectionMode === 'select') {
-                    cell.classList.add('selected');
-                } else {
-                    cell.classList.remove('selected');
-                }
-                lastTouchedCell = cell;
-            }
-        }, { passive: false });
-
-        scheduleWrapper.addEventListener('touchmove', (e) => {
-            if (isTouchSelecting) {
-                e.preventDefault();
-
-                const touch = e.touches[0];
-                const cell = document.elementFromPoint(touch.clientX, touch.clientY);
-
-                if (cell && cell.classList.contains('hour-cell') && cell !== lastTouchedCell) {
-                    if (touchSelectionMode === 'select') {
-                        cell.classList.add('selected');
-                    } else {
-                        cell.classList.remove('selected');
-                    }
-                    lastTouchedCell = cell;
-                }
-            }
-        }, { passive: false });
-
-        document.addEventListener('touchend', () => {
-            isTouchSelecting = false;
-            touchSelectionMode = null;
-            lastTouchedCell = null;
-        });
+        }); 
     }
 
+    // --- ОКОНЧАТЕЛЬНО ИСПРАВЛЕННАЯ ФУНКЦИЯ ---
     function shiftSchedule(scheduleBytes, hourShift) {
         const roundedHourShift = Math.round(hourShift);
         if (roundedHourShift === 0) return scheduleBytes;
@@ -439,24 +385,29 @@ document.addEventListener('DOMContentLoaded', () => {
         const newScheduleBytes = new Uint8Array(Math.ceil(TOTAL_CELLS / 8));
         
         for (let destIndex = 0; destIndex < TOTAL_CELLS; destIndex++) {
+            // 1. Декодируем линейный индекс ячейки в ее реальные координаты
             const destWeek = Math.floor(destIndex / CELLS_PER_WEEK);
             const destIndexInWeek = destIndex % CELLS_PER_WEEK;
             const destHour = Math.floor(destIndexInWeek / DAYS_PER_WEEK);
             const destDayInWeek = destIndexInWeek % DAYS_PER_WEEK;
             
+            // 2. Преобразуем координаты в абсолютное время с начала периода
             const destAbsDay = destWeek * DAYS_PER_WEEK + destDayInWeek;
             const destAbsHour = destAbsDay * HOURS_PER_DAY + destHour;
             
             const sourceAbsHour = (destAbsHour - roundedHourShift + TOTAL_CELLS) % TOTAL_CELLS;
             
+            // 4. Преобразуем абсолютное время источника обратно в координаты
             const sourceAbsDay = Math.floor(sourceAbsHour / HOURS_PER_DAY);
             const sourceHour = sourceAbsHour % HOURS_PER_DAY;
             const sourceWeek = Math.floor(sourceAbsDay / DAYS_PER_WEEK);
             const sourceDayInWeek = sourceAbsDay % DAYS_PER_WEEK;
 
+            // 5. Кодируем координаты источника обратно в линейный индекс
             const sourceIndexInWeek = sourceHour * DAYS_PER_WEEK + sourceDayInWeek;
             const sourceIndex = sourceWeek * CELLS_PER_WEEK + sourceIndexInWeek;
 
+            // 6. Проверяем бит в источнике и устанавливаем его в цели
             const isSourceBitSet = (scheduleBytes[Math.floor(sourceIndex / 8)] >> (sourceIndex % 8)) & 1;
             if (isSourceBitSet) {
                 newScheduleBytes[Math.floor(destIndex / 8)] |= (1 << (destIndex % 8));
